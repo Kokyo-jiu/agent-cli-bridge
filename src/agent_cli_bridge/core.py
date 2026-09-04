@@ -99,7 +99,6 @@ class SessionRegistry:
 from typing import Protocol
 
 
-
 class PromptTransport(Protocol):
     """Provider-specific boundary for delivering a new turn to a CLI session."""
 
@@ -171,7 +170,6 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Protocol
-
 
 
 class TranscriptParser(Protocol):
@@ -333,7 +331,6 @@ class TranscriptTailer:
                 if not raw:
                     break
                 if not raw.endswith(b"\n"):
-                    # Do not advance past an incomplete trailing row.
                     handle.seek(row_start)
                     break
                 try:
@@ -359,7 +356,6 @@ class TranscriptTailer:
         return out
 
 import uuid
-
 
 
 class BridgeRuntime:
@@ -438,7 +434,7 @@ class BridgeRuntime:
     def close_session(self, key: str) -> None:
         session = self.registry.remove(key)
         if session is not None:
-            seldf.transport.close_session(session)
+            self.transport.close_session(session)
 
 
 __all__ = [
