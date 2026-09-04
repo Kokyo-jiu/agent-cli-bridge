@@ -60,9 +60,10 @@ The first public extraction focuses on the reusable core:
 4. JSONL transcript tailing with durable offsets;
 5. a Claude-style transcript parser for text / thinking / tool-use / tool-result blocks;
 6. a runtime coordinator that keeps a turn alive through tool activity;
-7. an in-memory demo transport and tests.
+7. a long-lived subprocess transport and runnable end-to-end demo;
+8. tests across Python 3.10–3.12.
 
-The application-specific transport used by the original deployment is deliberately not included. A real CLI can be connected by implementing `PromptTransport`, while transcript parsing stays independent.
+The application-specific transport used by the original deployment is deliberately not included. Real CLIs can be connected through `PromptTransport`, while transcript parsing stays independent.
 
 ## Quick start
 
@@ -88,12 +89,58 @@ runtime = BridgeRuntime(
     tailer=tailer,
 )
 
-session = runtime.ensure_session("my-chat")
 runtime.send_turn("my-chat", "Inspect the project and explain the failing tests.")
 
 for event in runtime.poll("my-chat"):
     print(event.kind, event.data)
 ```
+
+## Runnable subprocess example
+
+`SubprocessPromptTransport` keeps one CLI process alive per logical bridge session and writes each new turn to its stdin. By default it uses newline-delimited JSON:
+
+```json
+{"type":"turn","session_id":"...","turn_id":"...","message":"inspect the project"}
+```
+
+The process can keep its own workspace, tools, native session state, and transcript. The bridge only owns lifecycle metadata and normalized runtime events.
+
+Run the included end-to-end demo:
+
+```bash
+python examples/subprocess_chat.py
+```
+
+It starts `examples/mock_line_agent.py`, sends a turn through a real long-lived subprocess, tails the generated JSONL transcript, and emits:
+
+```text
+session_started
+turn_start
+thinking
+tool_start
+tool_result
+assistant_delta
+turn_end
+```
+
+The same subprocess is reused for later turns in that logical session.
+
+A minimal real adapter setup looks like:
+
+```python
+import sys
+
+from agent_cli_bridge import SubprocessPromptTransport
+
+transport = SubprocessPromptTransport(
+    [sys.executable, "my_agent_cli.py"],
+    env={"MY_AGENT_TRANSCRIPT": "/path/to/session.jsonl"},
+)
+```
+
+For CLIs that accept plain newline-separated prompts instead of JSONL, use `input_mode="line"`.
+
+`command` is always an argv sequence and is launched without a shell. Provider-specific flags and transcript locations belong in the application adapter, not in the bridge core.
 
 ## Runtime event model
 
@@ -162,8 +209,8 @@ The public package intentionally excludes:
 
 ## Roadmap
 
-- [ ] production CLI adapter example
-- [ ] subprocess lifecycle helpers
+- [x] line-oriented subprocess transport + runnable end-to-end demo
+- [ ] provider-specific adapter examples
 - [ ] SSE/WebSocket event fan-out
 - [ ] richer session resume policies
 - [ ] pluggable transcript parsers
