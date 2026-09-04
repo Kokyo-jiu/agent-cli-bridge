@@ -6,7 +6,7 @@ Turn CLI agents into persistent, streaming conversational backends.
 
 - keep a logical session across many frontend turns;
 - send only the new user turn instead of rebuilding the entire conversation every time;
-- normalize thinking, assistant text, tool calls, tool results, turn boundaries, and errors into one event stream;
+- normalize reasoning summaries, assistant text, tool calls, tool results, turn boundaries, and errors into one event stream;
 - keep tool-using turns open until the CLI has actually finished the turn;
 - isolate provider-specific behavior behind adapters;
 - recover transcript reading from a durable byte offset.
@@ -36,7 +36,7 @@ frontend
 BridgeRuntime
    ├── SessionRegistry
    ├── PromptTransport
-   └── TranscriptTailer
+   └── TranscriptTailer / provider parser
           │
           ├── thinking
           ├── assistant_delta
@@ -58,12 +58,13 @@ The first public extraction focuses on the reusable core:
 2. persistent logical session registry;
 3. provider/transport adapter boundary;
 4. JSONL transcript tailing with durable offsets;
-5. a Claude-style transcript parser for text / thinking / tool-use / tool-result blocks;
+5. provider parsers for Claude-style content-block transcripts and Codex `exec --json` events;
 6. a runtime coordinator that keeps a turn alive through tool activity;
 7. a long-lived subprocess transport and runnable end-to-end demo;
-8. tests across Python 3.10–3.12.
+8. runnable provider-parser examples;
+9. tests across Python 3.10–3.12.
 
-The application-specific transport used by the original deployment is deliberately not included. Real CLIs can be connected through `PromptTransport`, while transcript parsing stays independent.
+The application-specific transport used by the original deployment is deliberately not included. Real CLIs can be connected through `PromptTransport`, while transcript/event parsing stays independent.
 
 ## Quick start
 
@@ -73,14 +74,14 @@ from agent_cli_bridge import (
     InMemoryTransport,
     SessionRegistry,
     TranscriptTailer,
-    ClaudeStyleTranscriptParser,
+    ClaudeTranscriptParser,
 )
 
 registry = SessionRegistry()
 transport = InMemoryTransport()
 tailer = TranscriptTailer(
     path="/path/to/session.jsonl",
-    parser=ClaudeStyleTranscriptParser(),
+    parser=ClaudeTranscriptParser(),
 )
 
 runtime = BridgeRuntime(
@@ -141,6 +142,64 @@ transport = SubprocessPromptTransport(
 For CLIs that accept plain newline-separated prompts instead of JSONL, use `input_mode="line"`.
 
 `command` is always an argv sequence and is launched without a shell. Provider-specific flags and transcript locations belong in the application adapter, not in the bridge core.
+
+## Provider parsers
+
+The runtime stays provider-neutral; `agent_cli_bridge.providers` contains small adapters for provider-native event shapes.
+
+### Claude-style transcripts
+
+`ClaudeTranscriptParser` parses common content-block transcript rows:
+
+- assistant `thinking` blocks → `thinking`
+- assistant `text` blocks → `assistant_delta`
+- `tool_use` → `tool_start`
+- `tool_result` → `tool_result`
+- an explicit stop/terminal marker → `turn_end`
+
+The original `ClaudeStyleTranscriptParser` import remains available for compatibility.
+
+Run the parser example:
+
+```bash
+python examples/claude_provider_events.py
+```
+
+### Codex `exec --json`
+
+`CodexExecParser` targets the public Codex CLI JSONL event model used by `codex exec --json`:
+
+```text
+thread.started
+turn.started
+item.started / item.updated / item.completed
+turn.completed / turn.failed
+error
+```
+
+Current canonical item types include agent messages, reasoning summaries, command execution, file changes, MCP tool calls, collaboration tool calls, web search, to-do lists, and non-fatal error items.
+
+The parser normalizes the useful lifecycle pieces while preserving unknown/additive events as `raw`:
+
+```text
+thread.started                  → session_switched
+item.completed: reasoning       → thinking
+item.completed: agent_message   → assistant_delta
+item.started: command/tool      → tool_start
+item.completed: command/tool    → tool_result
+turn.completed                  → turn_end
+turn.failed / fatal error       → turn_error
+```
+
+Codex `reasoning` is treated as provider-exposed reasoning summary/status text. The parser does not attempt to expose hidden chain of thought.
+
+Run the parser example:
+
+```bash
+python examples/codex_provider_events.py
+```
+
+Provider event schemas can evolve. The Codex adapter intentionally preserves unknown top-level and item events as `raw` rather than silently discarding them.
 
 ## Runtime event model
 
@@ -210,10 +269,10 @@ The public package intentionally excludes:
 ## Roadmap
 
 - [x] line-oriented subprocess transport + runnable end-to-end demo
-- [ ] provider-specific adapter examples
+- [x] Claude-style and Codex provider parser examples
 - [ ] SSE/WebSocket event fan-out
 - [ ] richer session resume policies
-- [ ] pluggable transcript parsers
+- [ ] additional pluggable provider parsers
 - [ ] reference frontend activity timeline
 
 ## License
