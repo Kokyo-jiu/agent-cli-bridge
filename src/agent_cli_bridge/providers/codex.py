@@ -22,6 +22,9 @@ class CodexExecParser:
     so callers can survive additive schema changes without silently losing data.
     """
 
+    def __init__(self) -> None:
+        self._streamed_agent_items: set[str] = set()
+
     _TOOL_TYPES = {
         "command_execution",
         "mcp_tool_call",
@@ -38,6 +41,18 @@ class CodexExecParser:
         turn_id: str,
     ) -> list[RuntimeEvent]:
         event_type = str(row.get("type") or row.get("event") or "")
+
+        if event_type == "item.agent_message.delta":
+            item_id = str(row.get("item_id") or "")
+            text = str(row.get("delta") or "")
+            if item_id:
+                self._streamed_agent_items.add(item_id)
+            return [
+                RuntimeEvent.make(
+                    "assistant_delta", session_id=session_id, turn_id=turn_id,
+                    provider="codex", text=text,
+                )
+            ] if text else []
 
         if event_type == "thread.started":
             provider_session_id = str(row.get("thread_id") or "")
@@ -80,6 +95,8 @@ class CodexExecParser:
         if event_type == "turn.failed":
             error = row.get("error")
             message = error.get("message", "") if isinstance(error, dict) else str(error or "")
+            if not message:
+                message = str(row.get("message") or "")
             return [
                 RuntimeEvent.make(
                     "turn_error",
@@ -124,6 +141,9 @@ class CodexExecParser:
         if item_type in {"agent_message", "assistant_message"}:
             if event_type != "item.completed":
                 return []
+            if item_id and item_id in self._streamed_agent_items:
+                self._streamed_agent_items.discard(item_id)
+                return []
             text = str(item.get("text") or "")
             return [
                 RuntimeEvent.make(
@@ -138,7 +158,7 @@ class CodexExecParser:
         if item_type == "reasoning":
             if event_type != "item.completed":
                 return []
-            text = str(item.get("text") or "")
+            text = str(item.get("text") or item.get("summary") or "")
             return [
                 RuntimeEvent.make(
                     "thinking",

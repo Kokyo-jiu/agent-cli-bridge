@@ -2,6 +2,22 @@
 
 All notable changes to `agent-cli-bridge` are documented here.
 
+## [0.2.0] - 2026-09-14
+
+### Codex app-server provider
+
+- Added the production-proven Codex app-server session transport used by the original deployment.
+- Added persisted `thread/start` seeds and isolated `thread/fork` candidate turns.
+- Added `turn/start` streaming-event translation and compatibility with the existing Codex parser.
+- Added clean-sibling assistant-history commits through `thread/inject_items` without another model turn.
+- Added caller-owned `baseInstructions`, explicit empty `developerInstructions`, empty dynamic tools/capability roots on seed, strict config, empty MCP config, and disabled optional extension families.
+- Kept the v0.1 `codex exec --json` path intact for compatibility and documented migration rather than silently replacing it.
+- Documented the important near-bare boundary: fail-closed native-tool handling is not the same as proving an empty model-visible core tool registry.
+
+### Compatibility
+
+- `CodexExecParser` now understands app-server assistant deltas, reasoning `summary` fields, and app-server failure messages while preserving the existing CLI event behavior.
+
 ## [0.1.0] - 2026-09-05
 
 Initial public release.

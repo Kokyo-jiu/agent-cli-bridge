@@ -201,6 +201,65 @@ python examples/codex_provider_events.py
 
 Provider event schemas can evolve. The Codex adapter intentionally preserves unknown top-level and item events as `raw` rather than silently discarding them.
 
+
+### Codex app-server sessions (v0.2, recommended for persistent Codex)
+
+`CodexExecParser` remains supported for existing `codex exec --json` integrations. For new persistent Codex integrations, v0.2 adds the app-server session transport that the original deployment has used in production since July 2026.
+
+It talks directly to `codex app-server --stdio --strict-config` and supports:
+
+- persisted `thread/start` seed sessions;
+- isolated `thread/fork` child turns;
+- `turn/start` streaming notifications;
+- caller-owned `baseInstructions` with `developerInstructions` explicitly empty;
+- empty dynamic-tool/capability-root lists on new threads;
+- MCP/apps/plugins/multi-agent and other extension families disabled at process startup;
+- candidate-child semantics: the parent is never mutated by a foreground turn;
+- clean-sibling assistant-history commits via `thread/inject_items`, without a second model turn;
+- local subscription auth through the installed Codex runtime; no API key is required by this package.
+
+Minimal seed turn:
+
+```python
+from agent_cli_bridge import CodexSessionSpec, run_session_turn
+
+spec = CodexSessionSpec(
+    mode="seed",
+    cwd="/absolute/path/to/clean/workspace",
+    system_file="/absolute/path/to/system.txt",
+)
+
+candidate = run_session_turn(spec, "hello", emit=print)
+```
+
+Continue from an accepted parent with `mode="fork"` and `parent_thread_id=<uuid>`. The returned child is only a **candidate**; applications should persist the assistant result first and then atomically promote that child in their own session ledger.
+
+A runnable command-line example is included:
+
+```bash
+python examples/codex_app_server_turn.py \
+  --cwd /absolute/clean/workspace \
+  --system-file /absolute/system.txt \
+  "hello"
+```
+
+#### Migrating from the v0.1 Codex CLI path
+
+The v0.1 `CodexExecParser` / `codex exec --json` path is kept for compatibility. Migration does not require deleting it:
+
+```text
+v0.1: frontend -> BridgeRuntime -> CLI subprocess -> codex exec --json
+v0.2: frontend/session ledger -> Codex app-server provider -> thread/start|fork -> turn/start
+```
+
+The two paths can coexist while an application moves conversations to app-server threads. Do not reuse a CLI process id as an app-server thread id; store the provider-native thread id separately.
+
+#### Near-bare boundary
+
+The v0.2 provider clears caller-controlled instruction/extension sources that app-server exposes directly: `baseInstructions` is caller-owned, `developerInstructions` is empty, `dynamicTools` and `selectedCapabilityRoots` are empty for seeds, MCP is empty, and optional extension families are disabled.
+
+This **does not claim that Codex's model-visible core coding-tool registry is empty**. Current app-server does not expose one top-level `tools: []` switch for every core coding tool. The provider therefore also fails closed if an unexpected native tool item appears. Blocking execution after a native tool attempt is a different guarantee from proving that the assembled model request had an empty registry. Applications that require a mathematically empty/caller-selected core registry must verify or patch the Codex request-builder/tool-registry layer for their pinned Codex version.
+
 ## Runtime event model
 
 The public event vocabulary is deliberately small:
