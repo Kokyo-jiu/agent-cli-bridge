@@ -700,6 +700,26 @@ def _thread_from_result(
     return thread_id, actual_model
 
 
+def _thread_config(*, web_search_enabled: bool, image_generation_enabled: bool) -> dict:
+    """Return the per-thread near-bare config proven against Codex 0.148.0."""
+    return {
+        "web_search": "live" if web_search_enabled else "disabled",
+        "include_collaboration_mode_instructions": False,
+        "include_environment_context": False,
+        "include_apps_instructions": False,
+        "include_permissions_instructions": False,
+        "skills": {"include_instructions": False},
+        "features": {
+            "image_generation": bool(image_generation_enabled),
+            "multi_agent_v2": {
+                "enabled": False,
+                "root_agent_usage_hint_text": "",
+                "multi_agent_mode_hint_text": "",
+            },
+        },
+    }
+
+
 def commit_assistant_history(
     spec: CodexSessionSpec,
     assistant_text: str,
@@ -747,10 +767,10 @@ def commit_assistant_history(
             "ephemeral": False,
             "baseInstructions": system_text,
             "developerInstructions": "",
-            "config": {
-                "web_search": "disabled",
-                "features": {"image_generation": False},
-            },
+            "config": _thread_config(
+                web_search_enabled=False,
+                image_generation_enabled=False,
+            ),
         }
         if spec.model:
             common["model"] = spec.model
@@ -848,14 +868,10 @@ def run_session_turn(
             "ephemeral": False,
             "baseInstructions": system_text,
             "developerInstructions": "",
-            "config": {
-                "web_search": "live" if spec.web_search_enabled else "disabled",
-                "features": {
-                    "image_generation": bool(
-                        spec.paid_image_generation_enabled
-                    ),
-                },
-            },
+            "config": _thread_config(
+                web_search_enabled=spec.web_search_enabled,
+                image_generation_enabled=spec.paid_image_generation_enabled,
+            ),
         }
         if spec.model:
             common["model"] = spec.model

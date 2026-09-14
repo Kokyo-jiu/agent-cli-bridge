@@ -256,9 +256,11 @@ The two paths can coexist while an application moves conversations to app-server
 
 #### Near-bare boundary
 
-The v0.2 provider clears caller-controlled instruction/extension sources that app-server exposes directly: `baseInstructions` is caller-owned, `developerInstructions` is empty, `dynamicTools` and `selectedCapabilityRoots` are empty for seeds, MCP is empty, and optional extension families are disabled.
+v0.2.1 moves the near-bare suppression into the per-thread `thread/start` / `thread/fork` config, because process-level feature disables alone are not enough. The provider now suppresses Codex-added skills, collaboration, environment, apps, permissions, and multi-agent hint fragments at thread scope while keeping caller-owned `baseInstructions`, an explicit empty `developerInstructions`, empty `dynamicTools` / `selectedCapabilityRoots` for seeds, and empty MCP configuration.
 
-This **does not claim that Codex's model-visible core coding-tool registry is empty**. Current app-server does not expose one top-level `tools: []` switch for every core coding tool. The provider therefore also fails closed if an unexpected native tool item appears. Blocking execution after a native tool attempt is a different guarantee from proving that the assembled model request had an empty registry. Applications that require a mathematically empty/caller-selected core registry must verify or patch the Codex request-builder/tool-registry layer for their pinned Codex version.
+This was verified against Codex 0.148.0 by capturing the actual local Responses request built by app-server. With the v0.2.1 config, the request contained no `tools` key and no Codex-added skills/team/multi-agent/environment instruction fragments; the model-visible conversation contained only the caller base instructions, retained conversation history, and the new user turn. The same property was verified across seed, clean-sibling `thread/inject_items` history commit, and the next fork.
+
+That guarantee is version-pinned, not timeless. Codex prompt/tool assembly can change between releases, so rerun the request-capture probe when upgrading Codex instead of assuming a future version has the same surface.
 
 ## Runtime event model
 

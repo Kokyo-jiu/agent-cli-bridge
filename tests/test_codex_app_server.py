@@ -43,6 +43,23 @@ def _spec(tmp_path: Path, *, mode="seed", parent=None):
     )
 
 
+def _assert_near_bare_thread_params(params, *, web_search: str, image_generation: bool):
+    assert params["developerInstructions"] == ""
+    config = params["config"]
+    assert config["web_search"] == web_search
+    assert config["include_collaboration_mode_instructions"] is False
+    assert config["include_environment_context"] is False
+    assert config["include_apps_instructions"] is False
+    assert config["include_permissions_instructions"] is False
+    assert config["skills"] == {"include_instructions": False}
+    assert config["features"]["image_generation"] is image_generation
+    assert config["features"]["multi_agent_v2"] == {
+        "enabled": False,
+        "root_agent_usage_hint_text": "",
+        "multi_agent_mode_hint_text": "",
+    }
+
+
 def test_app_server_command_is_strict_and_disables_external_extension_sources():
     command = list(APP_SERVER_COMMAND)
     assert command[:3] == ["codex", "app-server", "--stdio"]
@@ -69,7 +86,9 @@ def test_seed_turn_uses_near_bare_thread_start_and_streams_events(tmp_path):
     start = next(msg for msg in transport.sent if msg.get("method") == "thread/start")
     params = start["params"]
     assert params["baseInstructions"] == "caller supplied SP"
-    assert params["developerInstructions"] == ""
+    _assert_near_bare_thread_params(
+        params, web_search="live", image_generation=False
+    )
     assert params["dynamicTools"] == []
     assert params["selectedCapabilityRoots"] == []
     assert params["sandbox"] == "read-only"
@@ -94,6 +113,9 @@ def test_fork_turn_never_mutates_parent_and_returns_candidate_child(tmp_path):
     assert child == CHILD
     fork = next(msg for msg in transport.sent if msg.get("method") == "thread/fork")
     assert fork["params"]["threadId"] == PARENT
+    _assert_near_bare_thread_params(
+        fork["params"], web_search="live", image_generation=False
+    )
     turn = next(msg for msg in transport.sent if msg.get("method") == "turn/start")
     assert turn["params"]["threadId"] == CHILD
 
@@ -109,6 +131,10 @@ def test_clean_sibling_history_commit_injects_assistant_without_model_turn(tmp_p
     assert child == CHILD
     methods = [msg.get("method") for msg in transport.sent]
     assert "turn/start" not in methods
+    history_fork = next(msg for msg in transport.sent if msg.get("method") == "thread/fork")
+    _assert_near_bare_thread_params(
+        history_fork["params"], web_search="disabled", image_generation=False
+    )
     injected = next(msg for msg in transport.sent if msg.get("method") == "thread/inject_items")
     assert injected["params"]["threadId"] == CHILD
     item = injected["params"]["items"][0]

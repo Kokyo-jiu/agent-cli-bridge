@@ -2,6 +2,16 @@
 
 All notable changes to `agent-cli-bridge` are documented here.
 
+## [0.2.1] - 2026-09-14
+
+### Codex near-bare thread assembly
+
+- Moved instruction/context suppression into per-thread app-server config; process-level feature disables alone did not remove every model-visible fragment.
+- Suppressed skills, collaboration, environment, apps, permissions, root-team and multi-agent mode hints for `thread/start` and `thread/fork`.
+- Applied the same configuration to clean-sibling assistant-history commits.
+- Verified against Codex 0.148.0 with a local Responses request capture: the final request omitted the `tools` key and contained no Codex-added skills/team/multi-agent/environment fragments.
+- Verified the seed -> clean-sibling history commit -> next-fork lineage without relying on subscription quota.
+
 ## [0.2.0] - 2026-09-14
 
 ### Codex app-server provider
